@@ -180,27 +180,37 @@ patch_extension() {
         return 1
     fi
     
-    # Find the closing </dict> after the R block start (search from R_BLOCK_START onwards)
-    R_BLOCK_END=$(tail -n +$R_BLOCK_START "$GRAMMAR_FILE" | grep -n '^      </dict>$' | head -1 | cut -d: -f1)
+    # Find the closing </dict> for the R block by counting dict depth
+    # We need to find the matching closing tag at the same indentation level
+    R_BLOCK_END=$(awk -v start="$R_BLOCK_START" '
+        NR < start { next }
+        NR == start { depth = 0; next }
+        /<dict>/ { depth++ }
+        /<\/dict>/ { 
+            depth--
+            if (depth == 0 && /^      <\/dict>$/) {
+                print NR
+                exit
+            }
+        }
+    ' "$GRAMMAR_FILE")
     
     if [ -z "$R_BLOCK_END" ]; then
         echo -e "${RED}  Error: Could not find R block closing tag${NC}"
         return 1
     fi
-    
-    # Calculate absolute line number
-    R_BLOCK_END=$((R_BLOCK_START + R_BLOCK_END - 1))
 
     # Create temporary file with the webr block definition
-    WEBR_BLOCK=$(cat <<'EOF'
+    TEMP_WEBR="$GRAMMAR_FILE.webr_block"
+    cat > "$TEMP_WEBR" <<'EOF'
       <key>fenced_code_block_webr</key>
       <dict>
         <key>begin</key>
-        <string>(^|\\G)(\\s*)(\`{3,}|~{3,})\\s*(?:\\{(?:#[\\w-]+\\s+)?[\\{\\.=]?)?(?i:(webr|\\{\\.webr.+?\\}|.+\\-webr)(?:\\}{1,2})?((\\s+|:|,|\\{|\\?)[^\`~]*)?$)</string>
+        <string>(^|\G)(\s*)(`{3,}|~{3,})\s*(?:\{(?:#[\w-]+\s+)?[\{\.=]?)?(?i:(webr|\{\.webr.+?\}|.+\-webr)(?:\}{1,2})?((\s+|:|,|\{|\?)[^`~]*)?$)</string>
         <key>name</key>
         <string>markup.fenced_code.block.markdown</string>
         <key>end</key>
-        <string>(^|\\G)(\\2|\\s{0,3})(\\3)\\s*$</string>
+        <string>(^|\G)(\2|\s{0,3})(\3)\s*$</string>
         <key>beginCaptures</key>
         <dict>
           <key>3</key>
@@ -231,9 +241,9 @@ patch_extension() {
         <array>
           <dict>
             <key>begin</key>
-            <string>(^|\\G)(\\s*)(.*)</string>
+            <string>(^|\G)(\s*)(.*)</string>
             <key>while</key>
-            <string>(^|\\G)(?!\\s*([\`~]{3,})\\s*$)</string>
+            <string>(^|\G)(?!\s*([`~]{3,})\s*$)</string>
             <key>contentName</key>
             <string>meta.embedded.block.webr</string>
             <key>patterns</key>
@@ -247,13 +257,13 @@ patch_extension() {
         </array>
       </dict>
 EOF
-    )
     
-    # Insert webr block definition after R block using awk (more portable)
-    awk -v line="$R_BLOCK_END" -v block="$WEBR_BLOCK" '
-    NR == line { print; print block; next }
-    { print }
-    ' "$GRAMMAR_FILE" > "$GRAMMAR_FILE.tmp" && mv "$GRAMMAR_FILE.tmp" "$GRAMMAR_FILE"
+    # Insert webr block definition after R block
+    head -n "$R_BLOCK_END" "$GRAMMAR_FILE" > "$GRAMMAR_FILE.tmp"
+    cat "$TEMP_WEBR" >> "$GRAMMAR_FILE.tmp"
+    tail -n +$((R_BLOCK_END + 1)) "$GRAMMAR_FILE" >> "$GRAMMAR_FILE.tmp"
+    mv "$GRAMMAR_FILE.tmp" "$GRAMMAR_FILE"
+    rm "$TEMP_WEBR"
     
     # Add webr to fenced_code_block patterns array
     # Find the line with #fenced_code_block_r in the patterns array
@@ -268,18 +278,19 @@ EOF
     PATTERN_END=$(tail -n +$PATTERN_START "$GRAMMAR_FILE" | grep -n '^          </dict>$' | head -1 | cut -d: -f1)
     PATTERN_END=$((PATTERN_START + PATTERN_END - 1))
 
-    PATTERN_BLOCK=$(cat <<'EOF'
+    TEMP_PATTERN="$GRAMMAR_FILE.pattern_block"
+    cat > "$TEMP_PATTERN" <<'EOF'
           <dict>
             <key>include</key>
             <string>#fenced_code_block_webr</string>
           </dict>
 EOF
-    )
     
-    awk -v line="$PATTERN_END" -v block="$PATTERN_BLOCK" '
-    NR == line { print; print block; next }
-    { print }
-    ' "$GRAMMAR_FILE" > "$GRAMMAR_FILE.tmp" && mv "$GRAMMAR_FILE.tmp" "$GRAMMAR_FILE"
+    head -n "$PATTERN_END" "$GRAMMAR_FILE" > "$GRAMMAR_FILE.tmp"
+    cat "$TEMP_PATTERN" >> "$GRAMMAR_FILE.tmp"
+    tail -n +$((PATTERN_END + 1)) "$GRAMMAR_FILE" >> "$GRAMMAR_FILE.tmp"
+    mv "$GRAMMAR_FILE.tmp" "$GRAMMAR_FILE"
+    rm "$TEMP_PATTERN"
     
     echo "  Patching package.json..."
     
