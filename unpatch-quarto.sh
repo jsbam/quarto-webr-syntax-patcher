@@ -54,11 +54,11 @@ else
     OS="Linux"
 fi
 
-# Find Quarto extension directory
-find_quarto_extension() {
+# Find Quarto extension directories
+find_quarto_extensions() {
     local base_dir="$1"
     if [ -d "$base_dir" ]; then
-        find "$base_dir" -maxdepth 1 -type d -name "quarto.quarto-*" 2>/dev/null | head -1
+        find "$base_dir" -maxdepth 1 -type d -name "quarto.quarto-*" 2>/dev/null | sort -V
     fi
 }
 
@@ -84,37 +84,43 @@ if [ "$OS" = "Windows" ]; then
     # Check Positron locations
     if [[ "$TARGET_IDE" == "positron" || "$TARGET_IDE" == "both" ]]; then
         if [ -d "$POSITRON_WIN" ]; then
-            EXT=$(find_quarto_extension "$POSITRON_WIN")
-            [ -n "$EXT" ] && QUARTO_EXTENSIONS+=("Positron:$EXT")
+            while IFS= read -r EXT; do
+                [ -n "$EXT" ] && QUARTO_EXTENSIONS+=("Positron:$EXT")
+            done < <(find_quarto_extensions "$POSITRON_WIN")
         fi
         if [ -d "$POSITRON_HOME" ]; then
-            EXT=$(find_quarto_extension "$POSITRON_HOME")
-            [ -n "$EXT" ] && QUARTO_EXTENSIONS+=("Positron:$EXT")
+            while IFS= read -r EXT; do
+                [ -n "$EXT" ] && QUARTO_EXTENSIONS+=("Positron:$EXT")
+            done < <(find_quarto_extensions "$POSITRON_HOME")
         fi
     fi
     # Check VS Code locations
     if [[ "$TARGET_IDE" == "vscode" || "$TARGET_IDE" == "both" ]]; then
         if [ -d "$VSCODE_WIN" ]; then
-            EXT=$(find_quarto_extension "$VSCODE_WIN")
-            [ -n "$EXT" ] && QUARTO_EXTENSIONS+=("VS Code:$EXT")
+            while IFS= read -r EXT; do
+                [ -n "$EXT" ] && QUARTO_EXTENSIONS+=("VS Code:$EXT")
+            done < <(find_quarto_extensions "$VSCODE_WIN")
         fi
         if [ -d "$VSCODE_HOME" ]; then
-            EXT=$(find_quarto_extension "$VSCODE_HOME")
-            [ -n "$EXT" ] && QUARTO_EXTENSIONS+=("VS Code:$EXT")
+            while IFS= read -r EXT; do
+                [ -n "$EXT" ] && QUARTO_EXTENSIONS+=("VS Code:$EXT")
+            done < <(find_quarto_extensions "$VSCODE_HOME")
         fi
     fi
 else
     # macOS/Linux paths
     if [[ "$TARGET_IDE" == "positron" || "$TARGET_IDE" == "both" ]]; then
         if [ -d "$HOME/.positron/extensions" ]; then
-            EXT=$(find_quarto_extension "$HOME/.positron/extensions")
-            [ -n "$EXT" ] && QUARTO_EXTENSIONS+=("Positron:$EXT")
+            while IFS= read -r EXT; do
+                [ -n "$EXT" ] && QUARTO_EXTENSIONS+=("Positron:$EXT")
+            done < <(find_quarto_extensions "$HOME/.positron/extensions")
         fi
     fi
     if [[ "$TARGET_IDE" == "vscode" || "$TARGET_IDE" == "both" ]]; then
         if [ -d "$HOME/.vscode/extensions" ]; then
-            EXT=$(find_quarto_extension "$HOME/.vscode/extensions")
-            [ -n "$EXT" ] && QUARTO_EXTENSIONS+=("VS Code:$EXT")
+            while IFS= read -r EXT; do
+                [ -n "$EXT" ] && QUARTO_EXTENSIONS+=("VS Code:$EXT")
+            done < <(find_quarto_extensions "$HOME/.vscode/extensions")
         fi
     fi
 fi
